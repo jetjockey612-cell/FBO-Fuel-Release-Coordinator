@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>FBO &amp; Fuel Release Coordinator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+  :root{
+    --bg: #0F1A24;
+    --panel: #16232E;
+    --panel-raised: #1C2C39;
+    --line: #2A3B47;
+    --text: #E8EDF0;
+    --text-dim: #8CA0AC;
+    --amber: #E8A33D;
+    --teal: #4FA8A0;
+    --danger: #D9695A;
+    --font-display: 'Space Grotesk', system-ui, sans-serif;
+    --font-mono: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+  }
+  :root:not([data-theme="light"]){ }
+  @media (prefers-color-scheme: light){
+    :root:not([data-theme="dark"]){
+      --bg: #EEF1F0; --panel: #FFFFFF; --panel-raised: #F6F8F7; --line: #D3DBD8;
+      --text: #16232E; --text-dim: #5B6B72; --amber: #B4741E; --teal: #2E7D74; --danger: #B0392C;
+    }
+  }
+  :root[data-theme="light"]{
+    --bg: #EEF1F0; --panel: #FFFFFF; --panel-raised: #F6F8F7; --line: #D3DBD8;
+    --text: #16232E; --text-dim: #5B6B72; --amber: #B4741E; --teal: #2E7D74; --danger: #B0392C;
+  }
+  *{ box-sizing: border-box; }
+  body{
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: var(--font-mono); padding: 32px 16px 80px; -webkit-font-smoothing: antialiased;
+  }
+  .wrap{ max-width: 760px; margin: 0 auto; }
+  header.top{
+    display: flex; align-items: baseline; justify-content: space-between;
+    border-bottom: 2px solid var(--amber); padding-bottom: 14px; margin-bottom: 28px;
+    flex-wrap: wrap; gap: 8px;
+  }
+  header.top h1{ font-family: var(--font-display); font-size: 21px; font-weight: 700; margin: 0; letter-spacing: 0.2px; }
+  header.top .tag{ font-size: 12px; color: var(--text-dim); }
+  .section{
+    background: var(--panel); border: 1px solid var(--line); border-radius: 3px;
+    padding: 18px 20px; margin-bottom: 18px;
+  }
+  .section h2{
+    font-family: var(--font-display); font-size: 14px; font-weight: 600; margin: 0 0 14px;
+    color: var(--amber); display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 6px;
+  }
+  .section h2 .hint{ font-size: 11px; font-weight: 400; color: var(--text-dim); font-family: var(--font-mono); }
+  .grid{ display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .grid3{ display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  .field{ margin-bottom: 12px; }
+  .field label{ display: block; font-size: 11px; color: var(--text-dim); margin-bottom: 5px; }
+  .field input, .field select{
+    width: 100%; background: var(--panel-raised); border: 1px solid var(--line); color: var(--text);
+    padding: 8px 10px; font-family: var(--font-mono); font-size: 13.5px; border-radius: 2px;
+  }
+  .field input:focus, .field select:focus{ outline: 2px solid var(--teal); outline-offset: -1px; }
+  .field input:disabled{ opacity: 0.55; }
+  .arrival{
+    border: 1px solid var(--line); border-radius: 2px; padding: 16px; margin-bottom: 14px;
+    background: var(--panel-raised); position: relative;
+  }
+  .row-index{
+    position: absolute; top: -10px; left: 12px; background: var(--teal); color: var(--bg);
+    font-size: 10px; padding: 1px 7px; border-radius: 2px; font-weight: 600;
+  }
+  .remove-btn{
+    position: absolute; top: 10px; right: 10px; background: none; border: none; color: var(--danger);
+    cursor: pointer; font-size: 16px; line-height: 1; padding: 2px 6px;
+  }
+  .remove-btn:hover{ opacity: 0.7; }
+  .arrival-head{ font-family: var(--font-display); font-size: 13px; color: var(--teal); margin: 12px 0 10px; }
+  .divider{ border-top: 1px dashed var(--line); margin: 14px 0; }
+  .toggle-row{ display: flex; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 10px; }
+  .toggle-row input{ accent-color: var(--teal); width: 15px; height: 15px; flex-shrink: 0; }
+  .fuel-panel{
+    display: none; margin-top: 10px; padding: 12px; border: 1px dashed var(--amber);
+    border-radius: 2px; background: rgba(232,163,61,0.06);
+  }
+  .fuel-panel.show{ display: block; }
+  .fuel-panel .panel-label{ font-size: 11px; color: var(--amber); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.4px; }
+  .open-amount-row{ display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-dim); margin: -4px 0 12px; }
+  .open-amount-row input{ accent-color: var(--amber); width: 14px; height: 14px; }
+  .add-btn{
+    background: none; border: 1px dashed var(--line); color: var(--teal); padding: 8px 12px;
+    font-family: var(--font-mono); font-size: 12.5px; border-radius: 2px; cursor: pointer; width: 100%;
+  }
+  .add-btn:hover{ border-color: var(--teal); }
+  .generate-btn{
+    width: 100%; background: var(--amber); color: #1A1204; border: none; padding: 14px;
+    font-family: var(--font-display); font-weight: 700; font-size: 15px; border-radius: 3px;
+    cursor: pointer; margin: 6px 0 24px;
+  }
+  .generate-btn:hover{ filter: brightness(1.08); }
+  .output-wrap{ display: none; }
+  .output-wrap.show{ display: block; }
+  .email-card{
+    background: var(--panel); border: 1px solid var(--line); border-radius: 3px;
+    padding: 16px 18px; margin-bottom: 14px;
+  }
+  .email-card .ehead{ display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+  .email-card .etitle{ font-family: var(--font-display); font-size: 13px; color: var(--teal); }
+  .email-card .etitle.vendor{ color: var(--amber); }
+  .email-card .esub{ font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+  .ebtns{ display: flex; gap: 8px; flex-shrink: 0; }
+  .copy-btn{
+    background: var(--panel-raised); border: 1px solid var(--teal); color: var(--teal); padding: 6px 12px;
+    font-family: var(--font-mono); font-size: 12px; border-radius: 2px; cursor: pointer;
+  }
+  .copy-btn.copied{ background: var(--teal); color: var(--bg); }
+  .email-btn{
+    background: var(--panel-raised); border: 1px solid var(--amber); color: var(--amber); padding: 6px 12px;
+    font-family: var(--font-mono); font-size: 12px; border-radius: 2px; cursor: pointer;
+  }
+  .email-btn:hover{ background: var(--amber); color: #1A1204; }
+  .email-card textarea{
+    width: 100%; min-height: 200px; background: var(--panel-raised); border: 1px solid var(--line);
+    color: var(--text); font-family: var(--font-mono); font-size: 12.8px; line-height: 1.55;
+    padding: 14px; border-radius: 3px; white-space: pre-wrap; resize: vertical;
+  }
+  .clear-btn{
+    background: none; border: 1px solid var(--danger); color: var(--danger); padding: 5px 11px;
+    font-family: var(--font-mono); font-size: 11.5px; border-radius: 2px; cursor: pointer;
+  }
+  .clear-btn:hover{ background: var(--danger); color: var(--bg); }
+  #pdfFile{
+    width: 100%; background: var(--panel-raised); border: 1px solid var(--line); color: var(--text-dim);
+    padding: 8px 10px; font-family: var(--font-mono); font-size: 12px; border-radius: 2px;
+  }
+  .import-btn{
+    background: var(--panel-raised); border: 1px solid var(--teal); color: var(--teal); padding: 8px 14px;
+    font-family: var(--font-mono); font-size: 12.5px; border-radius: 2px; cursor: pointer;
+  }
+  .import-btn:hover{ background: var(--teal); color: var(--bg); }
+  #importStatus{ margin-top: 10px; font-size: 12px; min-height: 16px; }
+  #importStatus.ok{ color: var(--teal); }
+  #importStatus.err{ color: var(--danger); }
+  .confirm-overlay{
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.55);
+    align-items: center; justify-content: center; z-index: 100; padding: 20px;
+  }
+  .confirm-overlay.show{ display: flex; }
+  .confirm-box{ background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 22px; max-width: 340px; }
+  .confirm-box p{ margin: 0 0 18px; font-size: 13.5px; line-height: 1.5; }
+  .confirm-actions{ display: flex; gap: 10px; justify-content: flex-end; }
+  .confirm-cancel{
+    background: none; border: 1px solid var(--line); color: var(--text); padding: 8px 14px;
+    font-family: var(--font-mono); font-size: 12.5px; border-radius: 2px; cursor: pointer;
+  }
+  .confirm-yes{
+    background: var(--danger); border: 1px solid var(--danger); color: #fff; padding: 8px 14px;
+    font-family: var(--font-mono); font-size: 12.5px; border-radius: 2px; cursor: pointer;
+  }
+  footer.note{ text-align: center; color: var(--text-dim); font-size: 11px; margin-top: 20px; }
+  @media (max-width: 560px){
+    .grid{ grid-template-columns: 1fr; }
+    .grid3{ grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <h1>⛽ FBO &amp; Fuel Release Coordinator</h1>
+    <div style="display:flex; align-items:center; gap:14px;">
+      <span class="tag">per-leg arrival + fuel release emails</span>
+      <button class="clear-btn" onclick="confirmClear()">Clear all</button>
+    </div>
+  </header>
+
+  <div class="section">
+    <h2>Trip basics</h2>
+    <div class="grid">
+      <div class="field">
+        <label for="tail">Tail number</label>
+        <select id="tail" onchange="toggleOther('tail')">
+          <option value="N604GW">N604GW</option>
+          <option value="N500M">N500M</option>
+          <option value="N109GX">N109GX</option>
+          <option value="N999ZG">N999ZG</option>
+          <option value="__other">Other…</option>
+        </select>
+        <input id="tail_other" placeholder="Enter tail number" style="display:none; margin-top:6px;">
+      </div>
+      <div class="field">
+        <label for="pax">Default passenger count</label>
+        <input id="pax" placeholder="TBD" value="TBD">
+      </div>
+      <div class="field">
+        <label for="pic">PIC (signs the emails)</label>
+        <select id="pic" onchange="toggleOther('pic')">
+          <option value="Nathan Harbstreit">Nathan Harbstreit</option>
+          <option value="Tim Gehres">Tim Gehres</option>
+          <option value="Jeff Sprague">Jeff Sprague</option>
+          <option value="Micah Briner">Micah Briner</option>
+          <option value="Kent Anderson">Kent Anderson</option>
+          <option value="Zach Cash">Zach Cash</option>
+          <option value="__other">Other…</option>
+        </select>
+        <input id="pic_other" placeholder="Enter name" style="display:none; margin-top:6px;">
+      </div>
+      <div class="field">
+        <label for="sic">SIC</label>
+        <select id="sic" onchange="toggleOther('sic')">
+          <option value="">— none —</option>
+          <option value="Nathan Harbstreit">Nathan Harbstreit</option>
+          <option value="Tim Gehres">Tim Gehres</option>
+          <option value="Jeff Sprague">Jeff Sprague</option>
+          <option value="Micah Briner">Micah Briner</option>
+          <option value="Kent Anderson">Kent Anderson</option>
+          <option value="Zach Cash">Zach Cash</option>
+          <option value="__other">Other…</option>
+        </select>
+        <input id="sic_other" placeholder="Enter name" style="display:none; margin-top:6px;">
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Import trip sheet <span class="hint">optional — builds one arrival card per leg</span></h2>
+    <div class="field">
+      <label for="pdfFile">Upload the PDF trip sheet</label>
+      <input type="file" id="pdfFile" accept=".pdf">
+    </div>
+    <button class="import-btn" onclick="importFromPdfFile()">Import from PDF trip sheet</button>
+
+    <div id="importStatus"></div>
+  </div>
+
+  <div class="confirm-overlay" id="importFailOverlay">
+    <div class="confirm-box">
+      <p>Import unsuccessful — the file didn't match the expected layout. Please add arrivals manually.</p>
+      <div class="confirm-actions">
+        <button class="confirm-yes" onclick="hideImportFail()">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Arrivals <span class="hint">one card per leg — generates an FBO email, and a fuel release email if checked</span></h2>
+    <div id="arrivals"></div>
+    <button class="add-btn" onclick="addArrival()">+ Add arrival</button>
+  </div>
+
+  <button class="generate-btn" onclick="generate()">Generate emails</button>
+
+  <div class="output-wrap" id="outputWrap">
+    <div class="section" style="display:flex; justify-content:space-between; align-items:center;">
+      <h2 style="margin:0;">Generated emails</h2>
+      <span style="font-size:11px; color:var(--text-dim);" id="outputCount"></span>
+    </div>
+    <div id="emailCards"></div>
+  </div>
+
+  <footer class="note">Fill in what applies · leave anything blank to skip it<br>v1.0</footer>
+
+  <div class="confirm-overlay" id="confirmOverlay">
+    <div class="confirm-box">
+      <p>Clear all fields and start over? This cannot be undone.</p>
+      <div class="confirm-actions">
+        <button class="confirm-cancel" onclick="hideConfirm()">Cancel</button>
+        <button class="confirm-yes" onclick="clearAll(); hideConfirm();">Clear everything</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let arrCount = 0;
+const MONTHS = ['Jan','Feb','Mar','Apr','May','June','July','Aug','Sept','Oct','Nov','Dec'];
+const WEEKDAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+
+function toggleOther(fieldId){
+  const select = document.getElementById(fieldId);
+  const other = document.getElementById(fieldId + '_other');
+  other.style.display = (select.value === '__other') ? 'block' : 'none';
+}
+function valueOf(fieldId){
+  const select = document.getElementById(fieldId);
+  if(select.value === '__other') return document.getElementById(fieldId + '_other').value.trim();
+  return select.value.trim();
+}
+function formatDateParts(parts){
+  if(!parts) return '';
+  const d = new Date(parts.y, parts.m, parts.d);
+  return `${WEEKDAYS[d.getDay()]}, ${MONTHS[d.getMonth()]} ${d.getDate()}`;
+}
+
+// ---------- Arrival cards ----------
+
+function addArrival(prefill){
+  arrCount++;
+  const id = 'arr' + arrCount;
+  const div = document.createElement('div');
+  div.className = 'arrival';
+  div.id = id;
+  const p = prefill || {};
+  div.innerHTML = `
+    <span class="row-index">LEG ${arrCount}</span>
+    <button class="remove-btn" onclick="document.getElementById('${id}').remove()">&times;</button>
+    <div class="grid3" style="margin-top:14px;">
+      <div class="field">
+        <label>Arrival airport (ICAO)</label>
+        <input class="a-icao" placeholder="SKRG" value="${p.icao || ''}">
+      </div>
+      <div class="field">
+        <label>Day / date</label>
+        <input class="a-day" placeholder="Tuesday, Sept 22" value="${p.day || ''}">
+      </div>
+      <div class="field">
+        <label>Arrival time (local)</label>
+        <input class="a-time" placeholder="1830" value="${p.time || ''}">
+      </div>
+    </div>
+    <div class="grid">
+      <div class="field">
+        <label>FBO name</label>
+        <input class="a-fbo-name" placeholder="e.g. Signature Aviation" value="${p.fboName || ''}">
+      </div>
+      <div class="field">
+        <label>FBO email</label>
+        <input class="a-fbo-email" placeholder="ops@fbo.com" value="${p.fboEmail || ''}">
+      </div>
+      <div class="field">
+        <label>Passenger count</label>
+        <input class="a-pax" placeholder="TBD" value="${p.pax || ''}">
+      </div>
+      <div class="field">
+        <label>Departure time for next leg <span style="opacity:0.6;">(local, this airport)</span></label>
+        <input class="a-next-dep" placeholder="${p.nextDep ? '' : 'n/a — final stop'}" value="${p.nextDep || ''}">
+      </div>
+      <div class="field">
+        <label>Next leg departs on <span style="opacity:0.6;">(only if different day — remaining overnight)</span></label>
+        <input class="a-next-dep-day" placeholder="leave blank if same day" value="${p.nextDepDay || ''}">
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="toggle-row" style="font-weight:600;">
+      <input type="checkbox" class="chk-fbo-email">
+      <label>Generate arrival email to this FBO</label>
+    </div>
+
+    <div class="toggle-row" style="margin-top:12px;">
+      <input type="checkbox" class="chk-fuel-request" onchange="toggleFuelRequest(this)">
+      <label>Request fuel at this stop</label>
+    </div>
+    <div class="fuel-panel" data-panel="request">
+      <div class="panel-label">Fuel request (to FBO)</div>
+      <div class="field" style="margin-bottom:0;">
+        <label>Gallons requested <span style="opacity:0.6;">(leave blank to ask them to advise / top off)</span></label>
+        <input class="a-fuel-gallons" placeholder="e.g. 800 gal">
+      </div>
+    </div>
+
+    <div class="toggle-row" style="margin-top:12px;">
+      <input type="checkbox" class="chk-fuel-release" onchange="toggleFuelRelease(this)">
+      <label>Needs a Fuel Release (World Fuel / AvFuel)</label>
+    </div>
+    <div class="fuel-panel" data-panel="release">
+      <div class="panel-label">Fuel release request (to fuel vendor)</div>
+      <div class="grid">
+        <div class="field">
+          <label>Vendor</label>
+          <select class="a-fr-vendor" onchange="onVendorChange(this)">
+            <option value="World Fuel">World Fuel</option>
+            <option value="AvFuel">AvFuel</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Vendor contact email</label>
+          <input class="a-fr-vendor-email" placeholder="e.g. releases@worldfuel.com" value="fuel24@wfscorp.com">
+        </div>
+        <div class="field">
+          <label>Release date</label>
+          <input class="a-fr-date" placeholder="e.g. Sept 22, 2026" value="${p.day || ''}">
+        </div>
+        <div class="field">
+          <label>Release time</label>
+          <input class="a-fr-time" placeholder="1830L" value="${p.time || ''}">
+        </div>
+      </div>
+      <div class="open-amount-row">
+        <input type="checkbox" class="a-fr-open" onchange="toggleOpenAmount(this)">
+        <span>Leave the amount open — let the FBO/vendor advise</span>
+      </div>
+      <div class="field a-fr-gallons-field" style="margin-bottom:0;">
+        <label>Gallons requested</label>
+        <input class="a-fr-gallons" placeholder="e.g. 800 gal">
+      </div>
+    </div>
+  `;
+  document.getElementById('arrivals').appendChild(div);
+}
+
+function toggleFuelRequest(chk){
+  chk.closest('.arrival').querySelector('[data-panel="request"]').classList.toggle('show', chk.checked);
+}
+function toggleFuelRelease(chk){
+  chk.closest('.arrival').querySelector('[data-panel="release"]').classList.toggle('show', chk.checked);
+}
+function toggleOpenAmount(chk){
+  const field = chk.closest('.fuel-panel').querySelector('.a-fr-gallons-field');
+  field.style.display = chk.checked ? 'none' : 'block';
+}
+const VENDOR_EMAILS = { 'World Fuel': 'fuel24@wfscorp.com', 'AvFuel': 'avplanops@avfuel.com' };
+function onVendorChange(sel){
+  const emailInput = sel.closest('.fuel-panel').querySelector('.a-fr-vendor-email');
+  const current = emailInput.value.trim();
+  // Only auto-overwrite if it's still blank or still set to a known default (i.e. the user hasn't typed their own).
+  if(!current || Object.values(VENDOR_EMAILS).includes(current)){
+    emailInput.value = VENDOR_EMAILS[sel.value] || '';
+  }
+}
+
+// ---------- Import (shared parser logic from the Trip Coordination Builder) ----------
+
+function showImportStatus(msg, ok){
+  const el = document.getElementById('importStatus');
+  el.textContent = msg;
+  el.className = ok ? 'ok' : 'err';
+}
+function showImportFail(){ document.getElementById('importFailOverlay').classList.add('show'); }
+function hideImportFail(){ document.getElementById('importFailOverlay').classList.remove('show'); }
+
+function validateLegs(legs){
+  if(!legs || legs.length === 0) return false;
+  const codeRe = /^[A-Za-z0-9]{3,4}$/;
+  return legs.every(l => codeRe.test(l.orig) && codeRe.test(l.dest));
+}
+
+function applyParsedLegs(legs){
+  if(!validateLegs(legs)){ showImportFail(); return false; }
+  document.getElementById('arrivals').innerHTML = '';
+  arrCount = 0;
+  legs.forEach((leg, idx) => {
+    const nextLeg = (idx < legs.length - 1 && legs[idx+1].orig === leg.dest) ? legs[idx+1] : null;
+    const nextDep = nextLeg ? nextLeg.time : '';
+    const arrDay = leg.arrDayText || leg.dayText;
+    const nextDepDay = (nextLeg && nextLeg.dayText && nextLeg.dayText !== arrDay) ? nextLeg.dayText : '';
+    addArrival({
+      icao: leg.dest,
+      day: arrDay,
+      time: leg.arrTime || '',
+      nextDep,
+      nextDepDay,
+      fboName: leg.fboName || '',
+      fboEmail: leg.fboEmail || '',
+      pax: (leg.pax !== null && leg.pax !== undefined) ? String(leg.pax) : ''
+    });
+  });
+  showImportStatus(`Built ${legs.length} arrival card${legs.length===1?'':'s'} from the itinerary — add arrival times, FBOs, and fuel needs below.`, true);
+  return true;
+}
+
+function parsePdfTripSheet(items){
+  const airportRe = /^([A-Z0-9]{3,4})\s*\(.+\)$/;
+  const dateTimeRe = /^[A-Za-z]{3}\s+(\d{1,2})-([A-Za-z]{3})-(\d{4})\s+(\d{2}):(\d{2})$/;
+  const legMarkerRe = /^LEG\s+\d+$/i;
+  const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const PDF_MONTHS = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+  const toDayTime = (dm) => {
+    const day = parseInt(dm[1], 10);
+    const monthIdx = PDF_MONTHS.indexOf(dm[2].toLowerCase());
+    const year = parseInt(dm[3], 10);
+    return { dayText: formatDateParts({ y: year, m: monthIdx, d: day }), time: dm[4] + dm[5] };
+  };
+  const legs = [];
+  const paxCounts = [];
+  for(let i = 0; i < items.length; i++){
+    if(!legMarkerRe.test(items[i].trim())) continue;
+    let orig = null, dest = null, paxVal = null;
+    const dateMatches = [];
+    let arrivalFboName = null, arrivalFboEmail = null;
+    let sawArrivalMarker = false, linesSinceArrivalMarker = 0;
+    for(let j = i+1; j < items.length && j < i+250; j++){
+      const s = items[j].trim();
+      if(legMarkerRe.test(s)) break;
+      if(!orig || !dest){
+        const am = s.match(airportRe);
+        if(am){ if(!orig) orig = am[1]; else if(!dest) dest = am[1]; continue; }
+      }
+      if(orig && dest){
+        if(paxVal === null){ const pm = s.match(/^(\d{1,2})$/); if(pm){ paxVal = parseInt(pm[1],10); continue; } }
+        if(dateMatches.length < 4){ const dm = s.match(dateTimeRe); if(dm){ dateMatches.push(dm); continue; } }
+        // Arrival-airport services block: "<DEST> ARRIVAL SERVICES ..." marks the start of the
+        // FBO contact details for the airport we're landing at on this leg.
+        if(dest && !arrivalFboEmail && !sawArrivalMarker && new RegExp('^' + dest + '\\s+ARRIVAL SERVICES', 'i').test(s)){
+          sawArrivalMarker = true;
+          linesSinceArrivalMarker = 0;
+          continue;
+        }
+        if(sawArrivalMarker && !arrivalFboEmail){
+          linesSinceArrivalMarker++;
+          const isBoilerplate = /^(REQUEST|DETAIL|STATUS)(\s+(REQUEST|DETAIL|STATUS))*$/i.test(s);
+          if(!arrivalFboName && s && !isBoilerplate && s.charAt(0) !== '('){
+            arrivalFboName = s.replace(/\s*\([A-Z0-9]{3,4}\)\s*$/, '');
+          }
+          const em = s.match(emailRe);
+          if(em) arrivalFboEmail = em[0];
+          if(linesSinceArrivalMarker > 15) sawArrivalMarker = false;
+        }
+      }
+    }
+    if(orig && dest && dateMatches.length){
+      // Column order on the trip sheet is LOCAL then ZULU, each with a departure row then an
+      // arrival row — so among the date/time lines found: [0]=dep local, [1]=arr local, ...
+      const dep = toDayTime(dateMatches[0]);
+      const arr = toDayTime(dateMatches.length > 1 ? dateMatches[1] : dateMatches[0]);
+      legs.push({
+        orig, dest,
+        dayText: dep.dayText, time: dep.time,
+        arrDayText: arr.dayText, arrTime: arr.time,
+        fboName: arrivalFboName, fboEmail: arrivalFboEmail,
+        pax: paxVal
+      });
+      if(paxVal !== null) paxCounts.push(paxVal);
+    }
+  }
+  return { legs, paxCounts };
+}
+function extractTailNumber(items){
+  for(let i = 0; i < items.length; i++){ if(items[i].trim() === 'TAIL NUMBER:') return (items[i-1] || '').trim(); }
+  return null;
+}
+function extractCrewName(items, roleLabel){
+  for(let i = 0; i < items.length; i++){
+    if(items[i].trim() === roleLabel){
+      for(let j = i+1; j < items.length && j < i+6; j++){ const s = items[j].trim(); if(s) return s; }
+    }
+  }
+  return null;
+}
+function pdfNameToDisplay(raw){
+  if(!raw) return null;
+  const parts = raw.split(',');
+  const last = (parts[0] || '').trim();
+  const firstPart = (parts[1] || '').trim();
+  const first = firstPart.split(/\s+/)[0] || '';
+  return { full: `${first} ${last}`.trim(), last };
+}
+function matchRosterByLastName(selectId, lastName){
+  if(!lastName) return null;
+  const select = document.getElementById(selectId);
+  const found = Array.from(select.options).find(o => o.value !== '__other' && o.value.split(' ').pop().toLowerCase() === lastName.toLowerCase());
+  return found ? found.value : null;
+}
+function setSelectOrOther(selectId, value){
+  if(!value) return;
+  const select = document.getElementById(selectId);
+  const hasOption = Array.from(select.options).some(o => o.value === value);
+  if(hasOption){ select.value = value; } else { select.value = '__other'; document.getElementById(selectId + '_other').value = value; }
+  toggleOther(selectId);
+}
+function applyExtraTripInfo(items, paxCounts){
+  const tailRaw = extractTailNumber(items);
+  if(tailRaw) setSelectOrOther('tail', tailRaw);
+  const picInfo = pdfNameToDisplay(extractCrewName(items, 'PIC'));
+  if(picInfo) setSelectOrOther('pic', matchRosterByLastName('pic', picInfo.last) || picInfo.full);
+  const sicInfo = pdfNameToDisplay(extractCrewName(items, 'SIC'));
+  if(sicInfo) setSelectOrOther('sic', matchRosterByLastName('sic', sicInfo.last) || sicInfo.full);
+  if(paxCounts && paxCounts.length){
+    const uniq = [...new Set(paxCounts)];
+    const summary = uniq.length === 1 ? String(uniq[0]) : `${Math.max(...paxCounts)} (varies by leg)`;
+    document.getElementById('pax').value = summary;
+    // Per-leg counts are already filled in from each leg's own parsed value; this only
+    // backstops any leg where a pax count wasn't found on the trip sheet.
+    const fallback = uniq.length === 1 ? uniq[0] : Math.max(...paxCounts);
+    document.querySelectorAll('.a-pax').forEach(inp => { if(!inp.value) inp.value = String(fallback); });
+  }
+}
+
+async function importFromPdfFile(){
+  const input = document.getElementById('pdfFile');
+  const file = input.files[0];
+  if(!file){ showImportStatus('Choose a PDF file first.', false); return; }
+  if(!window.pdfjsLib){ showImportFail(); return; }
+  try {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    const buf = await file.arrayBuffer();
+    const doc = await pdfjsLib.getDocument({ data: new Uint8Array(buf) }).promise;
+    let items = [];
+    for(let p = 1; p <= doc.numPages; p++){
+      const page = await doc.getPage(p);
+      const content = await page.getTextContent();
+      items.push(...content.items.map(it => it.str));
+    }
+    const { legs, paxCounts } = parsePdfTripSheet(items);
+    const success = applyParsedLegs(legs);
+    if(success) applyExtraTripInfo(items, paxCounts);
+  } catch(err){ showImportFail(); }
+}
+
+// ---------- Generate emails ----------
+
+function fillDefaultPax(inputEl){
+  const v = inputEl.value.trim();
+  if(v) return v;
+  const dflt = document.getElementById('pax').value.trim();
+  return dflt || 'TBD';
+}
+
+function generate(){
+  const tail = valueOf('tail') || '[TAIL NUMBER]';
+
+  const cards = [];
+
+  document.querySelectorAll('.arrival').forEach((arr, idx) => {
+    const icao = arr.querySelector('.a-icao').value.trim().toUpperCase();
+    if(!icao) return;
+    const day = arr.querySelector('.a-day').value.trim();
+    const time = arr.querySelector('.a-time').value.trim();
+    const fboName = arr.querySelector('.a-fbo-name').value.trim();
+    const fboEmail = arr.querySelector('.a-fbo-email').value.trim();
+    const pax = fillDefaultPax(arr.querySelector('.a-pax'));
+    const nextDep = arr.querySelector('.a-next-dep').value.trim();
+    const nextDepDay = arr.querySelector('.a-next-dep-day').value.trim();
+    const sendFboEmail = arr.querySelector('.chk-fbo-email').checked;
+    const fuelRequested = arr.querySelector('.chk-fuel-request').checked;
+    const fuelGallons = arr.querySelector('.a-fuel-gallons').value.trim();
+    const fuelRelease = arr.querySelector('.chk-fuel-release').checked;
+
+    // ---- FBO email (only if the leg's checkbox is checked) ----
+    if(sendFboEmail){
+      let l = [];
+      l.push('Good day,');
+      l.push('');
+      l.push(`We'll be arriving at ${icao}${fboName ? ' / ' + fboName : ''} on ${day || '[date]'} at ${time || '[time]'} local, aboard ${tail}, with ${pax} passenger${pax==='1'?'':'s'} on board.`);
+      l.push('');
+      if(nextDep && nextDepDay){
+        l.push(`We'll be remaining overnight and departing on ${nextDepDay} at ${nextDep} local with ${pax} passenger${pax==='1'?'':'s'}.`);
+        l.push('');
+      } else if(nextDep){
+        l.push(`We're departing at ${nextDep} local with ${pax} passenger${pax==='1'?'':'s'}.`);
+        l.push('');
+      }
+      if(fuelRequested){
+        l.push(fuelGallons
+          ? `Could you please arrange ${fuelGallons} of fuel for our arrival?`
+          : `Could you please arrange fuel for our arrival? Please advise on quantity availability.`);
+        l.push('');
+      }
+      l.push('Please let us know if you need anything further to prepare for our arrival.');
+
+      cards.push({
+        type: 'fbo',
+        title: `LEG ${idx+1} · ${icao} — FBO arrival email`,
+        sub: fboName ? fboName : 'FBO name not entered',
+        to: fboEmail,
+        subject: `Arrival Coordination – ${icao} – ${tail}`,
+        body: l.join('\n')
+      });
+    }
+
+    // ---- Fuel release email ----
+    if(fuelRelease){
+      const vendor = arr.querySelector('.a-fr-vendor').value;
+      const vendorEmail = arr.querySelector('.a-fr-vendor-email').value.trim();
+      const frDate = arr.querySelector('.a-fr-date').value.trim() || day;
+      const frTime = arr.querySelector('.a-fr-time').value.trim() || time;
+      const open = arr.querySelector('.a-fr-open').checked;
+      const frGallons = arr.querySelector('.a-fr-gallons').value.trim();
+
+      let fl = [];
+      fl.push('Hello,');
+      fl.push('');
+      fl.push('Please issue a fuel release for the following:');
+      fl.push('');
+      fl.push(`Date: ${frDate || '[date]'}`);
+      fl.push(`Time: ${frTime || '[time]'} local`);
+      fl.push(`Aircraft: ${tail}`);
+      fl.push(`FBO: ${fboName || '[FBO]'}`);
+      fl.push(`Airport: ${icao}`);
+      fl.push(`Fuel requested: ${open ? 'Amount open — please advise based on availability' : (frGallons || '[gallons]')}`);
+      fl.push('');
+      fl.push('Please confirm once the release has been issued.');
+
+      cards.push({
+        type: 'vendor',
+        title: `LEG ${idx+1} · ${icao} — Fuel release to ${vendor}`,
+        sub: vendorEmail || `${vendor} contact email not entered`,
+        to: vendorEmail,
+        subject: `Fuel Release Request – ${icao} – ${tail}`,
+        body: fl.join('\n')
+      });
+    }
+  });
+
+  const container = document.getElementById('emailCards');
+  container.innerHTML = '';
+  cards.forEach((c, i) => {
+    const cardId = 'email' + i;
+    const div = document.createElement('div');
+    div.className = 'email-card';
+    div.innerHTML = `
+      <div class="ehead">
+        <div>
+          <div class="etitle ${c.type === 'vendor' ? 'vendor' : ''}">${c.title}</div>
+          <div class="esub">${c.sub}</div>
+        </div>
+        <div class="ebtns">
+          <button class="copy-btn" id="${cardId}-copybtn" onclick="copyCard('${cardId}')">Copy</button>
+          <button class="email-btn" onclick="emailCard('${cardId}', ${JSON.stringify(c.to)}, ${JSON.stringify(c.subject)})">Email it</button>
+        </div>
+      </div>
+      <textarea id="${cardId}" readonly>${c.body}</textarea>
+    `;
+    container.appendChild(div);
+  });
+
+  document.getElementById('outputCount').textContent = `${cards.length} email${cards.length===1?'':'s'} generated`;
+  document.getElementById('outputWrap').classList.add('show');
+  document.getElementById('outputWrap').scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+function copyCard(cardId){
+  const out = document.getElementById(cardId);
+  out.select();
+  navigator.clipboard.writeText(out.value).then(() => {
+    const btn = document.getElementById(cardId + '-copybtn');
+    btn.textContent = 'Copied';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1500);
+  });
+}
+function emailCard(cardId, to, subject){
+  const body = encodeURIComponent(document.getElementById(cardId).value);
+  const subj = encodeURIComponent(subject);
+  const toPart = to ? encodeURIComponent(to) : '';
+  window.location.href = `mailto:${toPart}?subject=${subj}&body=${body}`;
+}
+
+function confirmClear(){ document.getElementById('confirmOverlay').classList.add('show'); }
+function hideConfirm(){ document.getElementById('confirmOverlay').classList.remove('show'); }
+function clearAll(){
+  document.getElementById('arrivals').innerHTML = '';
+  arrCount = 0;
+  document.getElementById('tail').value = 'N604GW';
+  document.getElementById('tail_other').value = '';
+  document.getElementById('tail_other').style.display = 'none';
+  document.getElementById('pax').value = 'TBD';
+  document.getElementById('pic').value = 'Nathan Harbstreit';
+  document.getElementById('pic_other').value = '';
+  document.getElementById('pic_other').style.display = 'none';
+  document.getElementById('sic').value = '';
+  document.getElementById('sic_other').value = '';
+  document.getElementById('sic_other').style.display = 'none';
+  document.getElementById('emailCards').innerHTML = '';
+  document.getElementById('outputWrap').classList.remove('show');
+  document.getElementById('pdfFile').value = '';
+  document.getElementById('importStatus').textContent = '';
+  document.getElementById('importStatus').className = '';
+  addArrival();
+  window.scrollTo({top: 0, behavior: 'smooth'});
+}
+
+// seed with one arrival card to start
+addArrival();
+</script>
+</body>
+</html>
